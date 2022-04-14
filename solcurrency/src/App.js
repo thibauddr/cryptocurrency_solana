@@ -101,6 +101,113 @@ const App = () => {
       }
    }
 
+   const [supplyCapped,setSupplyCapped]=useState(false);
+
+   const mintAgainHelper=async () => {
+      try {
+         setLoading(true);
+         const connection = new Connection(
+             clusterApiUrl("devnet"),
+             "confirmed"
+         );
+         const createMintingWallet = await Keypair.fromSecretKey(Uint8Array.from(Object.values(JSON.parse(mintingWalletSecretKey))));
+         const mintRequester = await provider.publicKey;
+         
+         const fromAirDropSignature = await connection.requestAirdrop(createMintingWallet.publicKey,LAMPORTS_PER_SOL);
+         await connection.confirmTransaction(fromAirDropSignature, { commitment: "confirmed" });
+         
+         const creatorToken = new splToken.Token(connection, createdTokenPublicKey, TOKEN_PROGRAM_ID, createMintingWallet);
+         const fromTokenAccount = await creatorToken.getOrCreateAssociatedAccountInfo(createMintingWallet.publicKey);
+         const toTokenAccount = await creatorToken.getOrCreateAssociatedAccountInfo(mintRequester);
+         await creatorToken.mintTo(fromTokenAccount.address, createMintingWallet.publicKey, [], 100000000);
+         
+         const transaction = new Transaction().add(
+            splToken.Token.createTransferInstruction(
+               TOKEN_PROGRAM_ID,
+               fromTokenAccount.address,
+               toTokenAccount.address,
+               createMintingWallet.publicKey,
+               [],
+               100000000
+            )
+         );
+         await sendAndConfirmTransaction(connection, transaction, [createMintingWallet], { commitment: "confirmed" });
+          
+         setLoading(false);
+      } catch(err) {
+         console.log(err);
+         setLoading(false);
+      }
+   }
+
+   const transferTokenHelper = async () => {
+      try {
+         setLoading(true);
+         
+         const connection = new Connection(
+            clusterApiUrl("devnet"),
+            "confirmed"
+         );
+         
+         const createMintingWallet = Keypair.fromSecretKey(Uint8Array.from(Object.values(JSON.parse(mintingWalletSecretKey))));
+         const receiverWallet = new PublicKey("5eaFQvgJgvW4rDjcAaKwdBb6ZAJ6avWimftFyjnQB3Aj");
+         
+         const fromAirDropSignature = await connection.requestAirdrop(createMintingWallet.publicKey, LAMPORTS_PER_SOL);
+         await connection.confirmTransaction(fromAirDropSignature, { commitment: "confirmed" });
+         console.log('1 SOL airdropped to the wallet for fee');
+         
+         const creatorToken = new splToken.Token(connection, createdTokenPublicKey, TOKEN_PROGRAM_ID, createMintingWallet);
+         const fromTokenAccount = await creatorToken.getOrCreateAssociatedAccountInfo(provider.publicKey);
+         const toTokenAccount = await creatorToken.getOrCreateAssociatedAccountInfo(receiverWallet);
+         
+         const transaction = new Transaction().add(
+            splToken.Token.createTransferInstruction(TOKEN_PROGRAM_ID, fromTokenAccount.address, toTokenAccount.address, provider.publicKey, [], 10000000)
+         );
+         transaction.feePayer=provider.publicKey;
+         let blockhashObj = await connection.getRecentBlockhash();
+         console.log("blockhashObj", blockhashObj);
+         transaction.recentBlockhash = await blockhashObj.blockhash;
+   
+         if (transaction) {
+            console.log("Txn created successfully");
+         }
+         
+         let signed = await provider.signTransaction(transaction);
+         let signature = await connection.sendRawTransaction(signed.serialize());
+         await connection.confirmTransaction(signature);
+         
+         console.log("SIGNATURE: ", signature);
+         setLoading(false);
+      } catch(err) {
+         console.log(err)
+         setLoading(false);
+      }
+   }
+
+   const capSupplyHelper = async () => {
+      try {
+         setLoading(true);
+         const connection = new Connection(
+            clusterApiUrl("devnet"),
+            "confirmed"
+         );
+         
+         const createMintingWallet = await Keypair.fromSecretKey(Uint8Array.from(Object.values(JSON.parse(mintingWalletSecretKey))));
+         const fromAirDropSignature = await connection.requestAirdrop(createMintingWallet.publicKey, LAMPORTS_PER_SOL);
+         await connection.confirmTransaction(fromAirDropSignature);
+         
+         const creatorToken = new splToken.Token(connection, createdTokenPublicKey, TOKEN_PROGRAM_ID, createMintingWallet);
+         await creatorToken.setAuthority(createdTokenPublicKey, null, "MintTokens", createMintingWallet.publicKey, [createMintingWallet]);
+         
+         setSupplyCapped(true)
+         setLoading(false);
+      } catch(err) {
+         console.log(err);
+         setLoading(false);
+      }
+   }
+   
+
    return ( 
     	<div>
         	<h1> Create your own token using JavaScript </h1>
@@ -123,6 +230,24 @@ const App = () => {
             walletConnected ? (
             <p>Create your own token 
                <button disabled={loading} onClick={initialMintHelper}>Initial Mint </button>
+               <li>Mint More 100 tokens: 
+                  <button disabled={loading || supplyCapped} onClick={mintAgainHelper}>Mint Again</button>
+               </li>
+            </p>
+            ):<></>
+         }
+
+         {
+            walletConnected ? (
+            <p>Transfer tokens
+               <button disabled={loading} onClick={transferTokenHelper}>Transfer 10 tokens</button>
+            </p>):<></>
+         }
+
+         {
+            walletConnected ? (
+            <p>Cap token supply
+               <button disabled={loading} onClick={capSupplyHelper}>Cap token supply</button>
             </p>):<></>
          }
 
